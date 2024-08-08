@@ -1853,9 +1853,16 @@ class Formula
   def std_npm_args(prefix: libexec)
     require "language/node"
 
-    return Language::Node.std_npm_install_args(Pathname(prefix)) if prefix
-
-    Language::Node.local_npm_install_args
+    args = %w[--loglevel=silly --build-from-source]
+    args << "--unsafe-perm" if Process.uid.zero?
+    if prefix
+      target = Pathname.pwd
+      # Ignore a missing package.json and let the caller's `npm install` fail
+      # instead of our `npm pack`
+      target /= Language::Node.pack_for_installation if (target/"package.json").exist?
+      args.push("--prefix=#{prefix}", "--global", target.to_s)
+    end
+    args
   end
 
   # Standard parameters for pip builds.
@@ -2975,6 +2982,8 @@ class Formula
         pretty_args -= std_go_args
       when "meson"
         pretty_args -= std_meson_args
+      when "npm"
+        pretty_args -= std_npm_args
       when %r{(^|/)(pip|python)(?:[23](?:\.\d{1,2})?)?$}
         pretty_args -= std_pip_args
       end
@@ -3193,6 +3202,7 @@ class Formula
       GOCACHE:                 "#{HOMEBREW_CACHE}/go_cache",
       GOPATH:                  "#{HOMEBREW_CACHE}/go_mod_cache",
       CARGO_HOME:              "#{HOMEBREW_CACHE}/cargo_cache",
+      npm_config_cache:        "#{HOMEBREW_CACHE}/npm_cache",
       PIP_CACHE_DIR:           "#{HOMEBREW_CACHE}/pip_cache",
       CURL_HOME:               ENV.fetch("CURL_HOME") { Dir.home },
       PYTHONDONTWRITEBYTECODE: "1",

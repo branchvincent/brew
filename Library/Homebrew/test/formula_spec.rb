@@ -2,6 +2,7 @@
 
 require "test/support/fixtures/testball"
 require "formula"
+require "language/node"
 
 RSpec.describe Formula do
   alias_matcher :follow_installed_alias, :be_follow_installed_alias
@@ -1968,6 +1969,46 @@ RSpec.describe Formula do
       it "returns the API path" do
         expect(f.specified_path).to eq(Homebrew::API::Formula.cached_json_file_path)
       end
+    end
+  end
+
+  describe "#std_npm_args" do
+    let(:tmpdir) { mktmpdir }
+    let(:f) do
+      formula "foo" do
+        url "foo-1.0"
+      end
+    end
+
+    before do
+      allow(Language::Node).to receive(:pack_for_installation).and_return("foo-0.1.tgz")
+    end
+
+    it "defaults prefix to libexec" do
+      args = tmpdir.cd { f.std_npm_args }
+      expect(args).to eq(["--loglevel=silly", "--build-from-source", "--prefix=#{f.libexec}",
+                          "--global", "--install-links", tmpdir])
+    end
+
+    it "returns args for local install when prefix is false" do
+      expect(f.std_npm_args(prefix: false)).to eq(["--loglevel=silly", "--build-from-source"])
+    end
+
+    it "returns args for global install when prefix is not false" do
+      args = tmpdir.cd { f.std_npm_args(prefix: "/usr") }
+      expect(args).to eq(["--loglevel=silly", "--build-from-source", "--prefix=/usr",
+                          "--global", "--install-links", tmpdir])
+    end
+
+    it "calls pack if package.json exists" do
+      expect(Language::Node).to receive(:pack_for_installation)
+      (tmpdir/"package.json").write "{}"
+      tmpdir.cd { f.std_npm_args(prefix: "/usr") }
+    end
+
+    it "does not call pack if package.json does not exist" do
+      expect(Language::Node).not_to receive(:pack_for_installation)
+      tmpdir.cd { f.std_npm_args(prefix: "/usr") }
     end
   end
 end

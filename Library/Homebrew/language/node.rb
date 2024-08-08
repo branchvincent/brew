@@ -8,6 +8,7 @@ module Language
   module Node
     sig { returns(String) }
     def self.npm_cache_config
+      odeprecated "Language::Node.npm_cache_config"
       "cache=#{HOMEBREW_CACHE}/npm_cache"
     end
 
@@ -19,18 +20,21 @@ module Language
       # directory, consequently breaking that assumption. We require a tarball
       # because npm install creates a "real" installation when fed a tarball.
       package = Pathname("package.json")
-      if package.exist?
-        begin
-          pkg_json = JSON.parse(package.read)
-        rescue JSON::ParserError
-          opoo "Could not parse package.json!"
-          raise
-        end
-        prepare_removed = pkg_json["scripts"]&.delete("prepare")
-        prepack_removed = pkg_json["scripts"]&.delete("prepack")
-        postpack_removed = pkg_json["scripts"]&.delete("postpack")
-        package.atomic_write(JSON.pretty_generate(pkg_json)) if prepare_removed || prepack_removed || postpack_removed
+      return unless package.exist?
+
+      # Due to a bug in npm not respecting `--ignore-scripts`, we must remove
+      # pack's lifecyle scripts ourselves: https://docs.npmjs.com/cli/v10/using-npm/scripts#npm-pack
+      # TODO: remove with npm v11: https://github.com/npm/cli/issues/7211
+      begin
+        pkg_json = JSON.parse(package.read)
+      rescue JSON::ParserError
+        opoo "Could not parse package.json!"
+        raise
       end
+      modified = pkg_json["scripts"]&.delete("prepare")
+      modified ||= pkg_json["scripts"]&.delete("prepack")
+      modified ||= pkg_json["scripts"]&.delete("postpack")
+      package.atomic_write(JSON.pretty_generate(pkg_json)) if modified
       output = Utils.popen_read("npm", "pack", "--ignore-scripts")
       raise "npm failed to pack #{Dir.pwd}" if !$CHILD_STATUS.exitstatus.zero? || output.lines.empty?
 
@@ -54,11 +58,13 @@ module Language
 
     sig { params(libexec: Pathname).returns(T::Array[String]) }
     def self.std_npm_install_args(libexec)
+      odeprecated "Language::Node.std_npm_install_args", "`std_npm_args`"
       setup_npm_environment
 
       pack = pack_for_installation
 
       # npm 7 requires that these dirs exist before install
+      # https://github.com/npm/cli/pull/2497
       (libexec/"lib").mkpath
 
       # npm install args for global style module format installed into libexec
@@ -66,7 +72,6 @@ module Language
         -ddd
         --global
         --build-from-source
-        --#{npm_cache_config}
         --prefix=#{libexec}
         #{Dir.pwd}/#{pack}
       ]
@@ -78,12 +83,12 @@ module Language
 
     sig { returns(T::Array[String]) }
     def self.local_npm_install_args
+      odeprecated "Language::Node.local_npm_install_args", "`std_npm_args(prefix: false)`"
       setup_npm_environment
       # npm install args for local style module format
-      %W[
+      %w[
         -ddd
         --build-from-source
-        --#{npm_cache_config}
       ]
     end
 
